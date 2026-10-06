@@ -1,0 +1,20 @@
+# Terraform local state and cache
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files that may hold project IDs / secrets
+terraform.tfvars
+*.auto.tfvars
+
+# Plan output
+*.tfplan
+
+# Keep the lock file committed (do NOT ignore .terraform.lock.hcl)
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
