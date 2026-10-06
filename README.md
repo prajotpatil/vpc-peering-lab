@@ -22,134 +22,117 @@ shared (10.0.0.0/24) --- b4 (10.2.0.0/24)
 | `main.tf` | VPCs, subnets, firewalls, VMs, peerings |
 | `variables.tf` | Project, region, zone, VPC => CIDR map |
 | `outputs.tf` | VM internal IPs and VPC names |
-| `terraform.tfvars.example` | Template for your own `terraform.tfvars` |
+| `environments/production.tfvars` | Production values (project ID, region, zone) |
+| `terraform.tfvars.example` | Template for a local `terraform.tfvars` |
 | `.gitignore` | Keeps state, cache and tfvars out of Git |
 
 ---
 
-## Part A: Git, from repo creation to first commit
+## Branching model
 
-### 1. One-time Git identity
+| Branch | Purpose |
+|--------|---------|
+| `production` | Default branch. Only reviewed, working config. Deploy from here. |
+| `develop` | Integration branch. Features merge here first. |
+| `feature/*` | One branch per change, cut from `develop`. |
+
+Flow: `feature/*` -> `develop` -> `production`.
+
+---
+
+## Part A: Git, step by step (your own login)
+
+### 1. One-time identity
 ```bash
-git config --global user.name  "Your Name"
-git config --global user.email "you@example.com"
-git config --global init.defaultBranch main
+git config --global user.name  "Prajot Patil"
+git config --global user.email "patilprajot7@gmail.com"
+git config --global init.defaultBranch production
 ```
 
-### 2. Create the repo
+### 2. Create an empty repo on GitHub
+On github.com click **New repository**, name it `vpc-peering-lab`, leave
+README/.gitignore/license **unchecked**, then create it.
+
+### 3. Authenticate with your GitHub login
+Easiest: GitHub CLI.
 ```bash
-mkdir vpc-peering-lab && cd vpc-peering-lab   # or cd into this folder
-git init
+gh auth login        # choose GitHub.com > HTTPS > Login with a web browser
 ```
+(Or use HTTPS with a Personal Access Token as the password.)
 
-### 3. Add the files
-Place `main.tf`, `variables.tf`, `outputs.tf`, `.gitignore` and
-`terraform.tfvars.example` in the folder.
-
-### 4. Check what Git sees
+### 4. Connect and push all branches
 ```bash
-git status
+cd vpc-peering-lab
+git remote add origin https://github.com/<your-github-username>/vpc-peering-lab.git
+git push -u origin production develop
 ```
-You should NOT see `terraform.tfvars`, `.terraform/` or `*.tfstate`.
-They are covered by `.gitignore`.
+In GitHub: **Settings > Branches**, set `production` as default and add a
+branch protection rule (require pull request before merging).
 
-### 5. Stage and commit
+### 5. Everyday workflow
 ```bash
-git add .
-git commit -m "Add GCP hub-and-spoke VPC peering lab (Terraform)"
-```
-
-### 6. Verify the commit
-```bash
-git log --oneline
-git show --stat HEAD
-git status        # should say: nothing to commit, working tree clean
-```
-
-### 7. (Optional) Push to a remote
-Create an empty repo on GitHub or GitLab (no README), then:
-```bash
-git remote add origin https://github.com/<you>/vpc-peering-lab.git
-git push -u origin main
+git checkout develop && git pull
+git checkout -b feature/my-change
+# ...edit...
+terraform fmt && terraform validate
+git add -A
+git commit -m "Describe the change"
+git push -u origin feature/my-change
+# open PR: feature/my-change -> develop, merge
+# then PR: develop -> production, merge
 ```
 
 ---
 
-## Part B: Run the lab
+## Part B: Run the lab (Qwiklabs project `qwiklabs-gcp-03-14c91c25fc1`)
 
-### 1. Authenticate and set the project
+Run these in **Cloud Shell** (Terraform is preinstalled), logged in with the
+lab Username/Password from the lab panel. Never commit that password.
+
 ```bash
-gcloud auth application-default login
-gcloud config set project <YOUR_PROJECT_ID>
+gcloud config set project qwiklabs-gcp-03-14c91c25fc1
 gcloud services enable compute.googleapis.com iap.googleapis.com
-```
 
-### 2. Provide your project ID
-```bash
-cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars and set project_id
-```
+git clone https://github.com/<your-github-username>/vpc-peering-lab.git
+cd vpc-peering-lab
+git checkout production
 
-### 3. Deploy
-```bash
 terraform init
 terraform fmt -check
 terraform validate
-terraform plan
-terraform apply
-```
-Commit the generated lock file after the first init:
-```bash
-git add .terraform.lock.hcl
-git commit -m "Add provider lock file"
+terraform plan  -var-file=environments/production.tfvars
+terraform apply -var-file=environments/production.tfvars
 ```
 
-### 4. Verify peering
+### Verify peering
 ```bash
 gcloud compute networks peerings list --network=vpc-shared
-gcloud compute networks peerings list --network=vpc-b3
 ```
-All peerings should show `ACTIVE`.
+All should show `ACTIVE`.
 
-### 5. Test connectivity (via IAP, VMs have no public IP)
+### Test connectivity (VMs have no public IP, use IAP)
 ```bash
 terraform output vm_internal_ips
-
 gcloud compute ssh vm-shared --zone us-central1-a --tunnel-through-iap
-# inside the VM:
 ping -c 3 <internal IP of vm-b3>
-ping -c 3 <internal IP of vm-b4>
-ping -c 3 <internal IP of vm-bsys>
 ```
-From `vm-b3`, pinging `vm-shared` works; pinging `vm-b4` does **not**
-(no transitive peering).
+From `vm-b3`, `vm-shared` is reachable but `vm-b4` is not (peering is not
+transitive).
 
-### 6. Clean up (avoid charges)
+### Clean up
 ```bash
-terraform destroy
+terraform destroy -var-file=environments/production.tfvars
 ```
 
----
-
-## Part C: Making and committing changes (daily workflow)
-
-```bash
-git checkout -b feature/add-new-vpc
-# edit variables.tf, e.g. add:  b5 = "10.4.0.0/24"
-terraform fmt && terraform validate && terraform plan
-git add -A
-git commit -m "Add b5 VPC to the vpcs map"
-git push -u origin feature/add-new-vpc     # then open a pull/merge request
-```
-Adding a spoke also needs a new peering pair in `main.tf`, chained with
-`depends_on` to the previous peering.
+> The lab region may differ from `us-central1`. If the lab panel shows a
+> different region/zone, edit `environments/production.tfvars`.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| Peering stuck / "operation in progress" | Peerings on the same VPC must be sequential; the `depends_on` chain handles this. Re-run `terraform apply`. |
+| Peering stuck / "operation in progress" | Peerings are chained with `depends_on`; re-run `terraform apply`. |
 | Peering `INACTIVE` | Both halves must exist; check the reverse peering. |
-| Overlapping CIDR error | Make sure every range in `vpcs` is unique. |
-| IAP SSH fails | Enable `iap.googleapis.com` and ensure the `allow-iap-ssh-*` rule exists. |
-| `terraform.tfvars` shows in `git status` | Check `.gitignore` is in the repo root. |
+| Overlapping CIDR error | Every range in `vpcs` must be unique. |
+| IAP SSH fails | Enable `iap.googleapis.com`; check `allow-iap-ssh-*` rules. |
+| Permission denied on apply | Make sure you are logged in as the lab student account. |

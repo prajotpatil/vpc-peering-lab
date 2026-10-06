@@ -1,3 +1,3 @@
-# Copy to terraform.tfvars and fill in your project ID.
-# terraform.tfvars is git-ignored so it never gets committed.
+# Local override template. Copy to terraform.tfvars (git-ignored).
+# The committed production values live in environments/production.tfvars.
 project_id = "your-gcp-project-id"
