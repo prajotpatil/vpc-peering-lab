@@ -34,6 +34,20 @@ resource "google_compute_subnetwork" "subnet" {
   network       = google_compute_network.vpc[each.key].id
   ip_cidr_range = each.value
 }
+resource "google_compute_subnetwork" "extra" {
+  for_each      = var.extra_subnets
+  name          = "subnet-${each.key}"
+  region        = var.region
+  network       = google_compute_network.vpc[each.value.vpc].id
+  ip_cidr_range = each.value.cidr
+}
+
+locals {
+  all_cidrs = concat(
+    values(var.vpcs),
+    [for s in values(var.extra_subnets) : s.cidr]
+  )
+}
 
 # ------------------------------------------------------------------
 # 3. Firewall rules (GCP blocks all ingress by default)
@@ -45,7 +59,7 @@ resource "google_compute_firewall" "allow_internal" {
   name          = "allow-internal-${each.key}"
   network       = google_compute_network.vpc[each.key].name
   direction     = "INGRESS"
-  source_ranges = values(var.vpcs)
+  source_ranges = local.all_cidrs
 
   allow {
     protocol = "icmp"

@@ -27,3 +27,9 @@ variable "vpcs" {
     bsys   = "10.3.0.0/24"
   }
 }
+
+variable "shared_subnet_2_cidr" {
+  description = "CIDR for the second subnet in the shared VPC"
+  type        = string
+  default     = "10.0.1.0/24"
+}
